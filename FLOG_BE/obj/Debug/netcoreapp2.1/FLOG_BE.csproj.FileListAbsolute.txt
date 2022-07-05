@@ -1,0 +1,16 @@
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\obj\Debug\netcoreapp2.1\FLOG_BE.RazorAssemblyInfo.cache
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\obj\Debug\netcoreapp2.1\FLOG_BE.RazorAssemblyInfo.cs
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\obj\Debug\netcoreapp2.1\FLOG_BE.AssemblyInfoInputs.cache
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\obj\Debug\netcoreapp2.1\FLOG_BE.AssemblyInfo.cs
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\bin\Debug\netcoreapp2.1\appsettings.Development.json
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\bin\Debug\netcoreapp2.1\appsettings.json
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\bin\Debug\netcoreapp2.1\Properties\launchSettings.json
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\bin\Debug\netcoreapp2.1\FLOG_BE.deps.json
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\bin\Debug\netcoreapp2.1\FLOG_BE.runtimeconfig.json
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\bin\Debug\netcoreapp2.1\FLOG_BE.runtimeconfig.dev.json
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\bin\Debug\netcoreapp2.1\FLOG_BE.dll
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\bin\Debug\netcoreapp2.1\FLOG_BE.pdb
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\obj\Debug\netcoreapp2.1\FLOG_BE.RazorTargetAssemblyInfo.cache
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\obj\Debug\netcoreapp2.1\FLOG_BE.dll
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\obj\Debug\netcoreapp2.1\FLOG_BE.pdb
+C:\FLOG\FLOG\FLOG_BE\FLOG_BE\obj\Debug\netcoreapp2.1\FLOG_BE.csprojAssemblyReference.cache

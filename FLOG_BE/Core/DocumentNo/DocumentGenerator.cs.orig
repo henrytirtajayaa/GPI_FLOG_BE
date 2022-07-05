@@ -1,0 +1,456 @@
+﻿using Microsoft.AspNetCore.Http;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Claims;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Infrastructure.Log;
+using Microsoft.Extensions.Configuration;
+using FLOG_BE.Model.Companies;
+using FLOG_BE.Helper;
+using System.Data;
+using System.Text;
+using Entities = FLOG_BE.Model.Companies.Entities;
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Data.Common;
+
+namespace FLOG.Core.DocumentNo
+{
+    public static class DOCNO_SETUP
+    {
+        //PAYABLE SETUP NO
+        public const string PAYABLE_INVOICE = "payable_invoice_doc_no";
+        public const string PAYABLE_DEBITNOTE = "payable_debit_note_doc_no";
+        public const string PAYABLE_CREDITNOTE = "payable_credit_note_doc_no";
+        public const string PAYABLE_WRITEOFF = "payable_writeoff_doc_no";
+        public const string PAYABLE_WHT = "payable_wht_doc_no";
+        public const string PAYABLE_SOA = "soa_doc_no";
+        public const string PAYABLE_SOA_DEBIT = "soa_debit_note_no";
+        public const string PAYABLE_SOA_CREDIT = "soa_credit_note_no";
+        public const string PAYABLE_ADV_REQUEST = "advance_request_doc_no";
+        public const string PAYABLE_ADV_REALIZATION = "advance_realization_doc_no";
+        public const string PAYABLE_ADV_CREDITNOTE = "advance_credit_note_doc_no";
+        public const string PAYABLE_NS_INVOICE = "ns_invoice_doc_no";
+        public const string PAYABLE_NS_ADV_REQUEST = "ns_advance_request_doc_no";
+        public const string PAYABLE_NS_ADV_REALIZATION = "ns_advance_realization_doc_no";
+        public const string PAYABLE_APPLY = "apply_doc_no";
+
+        //RECEIVABLE SETUP DOC NO
+        public const string RECEIVABLE_INVOICE = "receivable_invoice_doc_no";
+        public const string RECEIVABLE_DEBITNOTE = "receivable_debit_note_doc_no";
+        public const string RECEIVABLE_CREDITNOTE = "receivable_credit_note_doc_no";
+        public const string RECEIVABLE_WRITEOFF = "receivable_writeoff_doc_no";
+        public const string RECEIVABLE_WHT = "receivable_wht_doc_no";
+        public const string RECEIVABLE_SOA_DEBIT = "soa_debit_note_no";
+        public const string RECEIVABLE_SOA_CREDIT = "soa_credit_note_no";
+        public const string RECEIVABLE_ADV_RECEIPT = "advance_receipt_doc_no";
+        public const string RECEIVABLE_ADV_PAYMENT = "advance_payment_doc_no";
+        public const string RECEIVABLE_ADV_REQUEST = "advance_request_doc_no";
+        public const string RECEIVABLE_ADV_REALIZATION = "advance_realization_doc_no";
+        public const string RECEIVABLE_ADV_CREDIT = "advance_credit_note_doc_no";
+        public const string RECEIVABLE_NS_INVOICE = "ns_invoice_doc_no";
+        public const string RECEIVABLE_APPLY = "apply_doc_no";
+
+        //CHECKBOOK SETUP DOC NO
+        public const string CHECKBOOK_IN = "checkbook_in_doc_no";
+        public const string CHECKBOOK_OUT = "checkbook_out_doc_no";
+        public const string CHECKBOOK_RECEIPT = "receipt_doc_no";
+        public const string CHECKBOOK_PAYMENT = "payment_doc_no";
+        public const string CHECKBOOK_RECONCILE = "reconcile_doc_no";
+        
+        //FINANCIAL SETUP
+        public const string FINANCIAL_GENERALJOURNAL = "gl_doc_no";
+
+        //PAYMENT
+        public const string PAYMENT_DOCUMENT = "payment_doc_no";
+        //receipt
+        public const string RECEIPT_DOCUMENT = "receipt_doc_no"; 
+        //Sales_setup
+        public const string SALES_ORDER_DOCUMENT = "so_doc_no";
+        public const string SALES_QUOTATION= "quot_doc_no";
+
+        //CONTAINER SETUP
+        public const string CONTAINER_RENTAL_REQUEST = "request_doc_no";
+        public const string CONTAINER_RENTAL_DELIVERY = "delivery_doc_no";
+        public const string CONTAINER_RENTAL_CLOSING = "closing_doc_no";
+
+    }
+
+    public class DocumentNoGen : IDocumentNoGen
+    {
+        private readonly CompanyContext _context;
+        private IConfiguration _config;
+        private LogWriter _logger;
+
+        public DocumentNoGen(CompanyContext context)
+        {
+            _context = context;
+        }
+
+        public DocumentNoGen(CompanyContext context, IConfiguration config)
+        {
+            _context = context;
+            _config = config;
+
+            _logger = new LogWriter(_config);
+        }
+
+        private const int SEGMENT_TYPE_CHAR = 1;
+        private const int SEGMENT_TYPE_NUMBER = 2;
+        private const int SEGMENT_TYPE_SYMBOL = 3;
+        private const int SEGMENT_TYPE_YEAR = 4;
+        private const int SEGMENT_TYPE_MONTH = 5;
+
+        /// <summary>
+        /// Generate New Document No
+        /// </summary>
+        /// <param name="docDate"></param>
+        /// <param name="moduleId"></param>
+        /// <param name="docNoSetup"></param>
+        /// <returns></returns>
+        public string UniqueDocumentNo(DateTime docDate, int moduleId, string docNoSetup, string code = "", string documentType = "", DbTransaction trans = null)
+        {
+            StringBuilder uniqueNo = new StringBuilder();
+            
+            string tableName = string.Empty;
+
+            if(moduleId > 0 && !string.IsNullOrEmpty(docNoSetup))
+            {
+                try
+                {
+                    Console.WriteLine("[UniqueDocumentNo] ****** CODE A -> " + code);
+
+                    //Get DOCUMENT ID to NUMBERFORMAT HEADER
+                    var formatDetails = GetDocumentFormat(moduleId, docNoSetup, code, trans);
+                    
+                    bool isMonthlyReset = true;
+                    bool isYearlyReset = true;
+                    int autoNumberPos = 0;
+                    int autoNumberLength = 0;
+
+                    if (formatDetails.Rows.Count > 0)
+                    {
+                       
+                            isMonthlyReset = (bool)formatDetails.Rows[0]["is_monthly_reset"];
+                            isYearlyReset = (bool)formatDetails.Rows[0]["is_yearly_reset"];
+
+                            foreach (DataRow dr in formatDetails.Rows)
+                            {
+                                if ((int)dr["segment_type"] == SEGMENT_TYPE_NUMBER)
+                                {
+                                    autoNumberLength = (int)dr["segment_length"];
+                                    break;
+                                }
+                                else
+                                {
+                                    autoNumberPos += (int)dr["segment_length"];
+                                }
+                            }
+                       
+                        //autoNumberPos= autoNumberPos-1;
+                    }
+
+                    Console.WriteLine("[UniqueDocumentNo] ****** CODE B -> " + code);
+
+                    var mapping = _context.Model.FindEntityType(typeof(Entities.PayableTransactionHeader)).Relational();
+
+                    switch (moduleId)
+                    {
+                        case TRX_MODULE.TRX_PAYABLE:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.PayableTransactionHeader)).Relational();
+                                tableName = mapping.TableName;
+
+                                break;
+                            }
+                        case TRX_MODULE.TRX_RECEIVABLE:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.ReceivableTransactionHeader)).Relational();
+                                tableName = mapping.TableName;
+                                break;
+                            }
+                        case TRX_MODULE.TRX_CHECKBOOK:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.CheckbookTransactionHeader)).Relational();
+                                tableName = mapping.TableName;
+                                break;
+                            }
+                        case TRX_MODULE.TRX_GENERAL_JOURNAL:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.JournalEntryHeader)).Relational();
+                                tableName = mapping.TableName;
+                                break;
+                            }
+                        case TRX_MODULE.TRX_PAYMENT:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.ApPaymentHeader)).Relational();
+                                tableName = mapping.TableName;
+                                break;
+                            }
+                        case TRX_MODULE.TRX_RECEIPT:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.ArReceiptHeader)).Relational();
+                                tableName = mapping.TableName;
+                                break;
+                            }
+                        case TRX_MODULE.TRX_APPLY_PAYABLE:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.APApplyHeader)).Relational();
+                                tableName = mapping.TableName;
+                                break;
+                            }
+                        case TRX_MODULE.TRX_APPLY_RECEIPT:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.ARApplyHeader)).Relational();
+                                tableName = mapping.TableName;
+                                break;
+                            }
+                        case TRX_MODULE.TRX_BANK_RECONCILE:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.BankReconcileHeader)).Relational();
+                                tableName = mapping.TableName;
+                                break;
+                            }
+<<<<<<< HEAD
+                        case TRX_MODULE.SALES_ORDER:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.SalesOrderHeader)).Relational();
+                                tableName = mapping.TableName;
+                                break;
+                            }
+                        case TRX_MODULE.SALES_QUOTATION:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.SalesQuotationHeader)).Relational();
+=======
+                        case TRX_MODULE.TRX_CONTAINER_RENTAL_REQUEST:
+                            {
+                                mapping = _context.Model.FindEntityType(typeof(Entities.ContainerRentalRequestHeader)).Relational();
+>>>>>>> develop
+                                tableName = mapping.TableName;
+                                break;
+                            }
+                        default: break;
+                    }
+
+                    //OBTAIN LAST EXISTING NO
+                    string lastNo = "";
+                    if (!string.IsNullOrEmpty(tableName))
+                    {
+                        string qry = "";
+                        
+                             qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE YEAR(transaction_date) = {1} AND status <> {2} ORDER BY document_no DESC ", tableName, docDate.Year, DOCSTATUS.DELETE);
+
+                        if (!string.IsNullOrEmpty(documentType) && (moduleId == TRX_MODULE.TRX_PAYABLE || moduleId == TRX_MODULE.TRX_CHECKBOOK))
+                        {
+                            if (isMonthlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE MONTH(transaction_date) = {1} AND YEAR(transaction_date) = {2} AND status <> {3} AND document_type = '{4}' ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE, documentType.ToUpper());
+                            }
+                            else if (isYearlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE YEAR(transaction_date) = {2} AND status <> {3} AND document_type = '{4}' ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE, documentType.ToUpper());
+                            }
+                            else
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE YEAR(transaction_date) = {1} AND status <> {2} AND document_type = '{3}' ORDER BY document_no DESC ", tableName, docDate.Year, DOCSTATUS.DELETE, documentType.ToUpper());
+                            }
+                        }else if (!string.IsNullOrEmpty(documentType) && moduleId == TRX_MODULE.TRX_RECEIVABLE && !string.IsNullOrEmpty(code))
+                        {
+                            if (isMonthlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE MONTH(transaction_date) = {1} AND YEAR(transaction_date) = {2} AND status <> {3} AND document_type = '{4}' AND transaction_type = '{5}' ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE, documentType.ToUpper(), code);
+                            }
+                            else if (isYearlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE YEAR(transaction_date) = {2} AND status <> {3} AND document_type = '{4}' AND transaction_type = '{5}' ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE, documentType.ToUpper(), code);
+                            }
+                            else
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE YEAR(transaction_date) = {1} AND status <> {2} AND document_type = '{3}' AND transaction_type = '{4}' ORDER BY document_no DESC ", tableName, docDate.Year, DOCSTATUS.DELETE, documentType.ToUpper(), code);
+                            }
+                        }
+                        else if (!string.IsNullOrEmpty(code) && moduleId == TRX_MODULE.TRX_CHECKBOOK)
+                        {
+                            if (isMonthlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE MONTH(transaction_date) = {1} AND YEAR(transaction_date) = {2} AND status <> {3} AND checkbook_code = '{4}' ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE, code.ToUpper());
+                            }
+                            else if (isYearlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE MONTH(transaction_date) = {1} AND YEAR(transaction_date) = {2} AND status <> {3} AND checkbook_code = '{4}' ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE, code.ToUpper());
+                            }
+                            else
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE YEAR(transaction_date) = {1} AND status <> {2} AND checkbook_code = '{3}' ORDER BY document_no DESC ", tableName, docDate.Year, DOCSTATUS.DELETE, code.ToUpper());
+                            }
+                        }
+                        else if (!string.IsNullOrEmpty(code) && moduleId == TRX_MODULE.TRX_CONTAINER_RENTAL_REQUEST)
+                        {
+                            if (isMonthlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE MONTH(document_date) = {1} AND YEAR(document_date) = {2} AND status <> {3} AND transaction_type = '{4}' ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE, code.ToUpper());
+                            }
+                            else if (isYearlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE MONTH(document_date) = {1} AND YEAR(document_date) = {2} AND status <> {3} AND transaction_type = '{4}' ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE, code.ToUpper());
+                            }
+                            else
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE YEAR(document_date) = {1} AND status <> {2} AND document_type = '{3}' ORDER BY document_no DESC ", tableName, docDate.Year, DOCSTATUS.DELETE, code.ToUpper());
+                            }
+                        }
+                        else
+                        {
+                            if (isMonthlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE MONTH(transaction_date) = {1} AND YEAR(transaction_date) = {2} AND status <> {3} ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE);
+                            }
+                            else if (isYearlyReset)
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE MONTH(transaction_date) = {1} AND YEAR(transaction_date) = {2} AND status <> {3} ORDER BY document_no DESC ", tableName, docDate.Month, docDate.Year, DOCSTATUS.DELETE);
+                            }
+                            else
+                            {
+                                qry = string.Format("SELECT TOP 1 document_no FROM {0} WHERE YEAR(transaction_date) = {1} AND status <> {2} ORDER BY document_no DESC ", tableName, docDate.Year, DOCSTATUS.DELETE);
+                            }
+                        }
+
+                        Console.WriteLine("[LAST NO] ****** QRY -> " + qry);
+
+                        var queries = RawQuery.SelectRawSql(_context.Database, qry, trans);
+
+                        if (queries != null && queries.Rows.Count > 0)
+                            lastNo = queries.Rows[0]["document_no"].ToString();
+                    }
+
+                    Console.WriteLine("[LAST NO] ****** LAST -> " + lastNo);
+                    Console.WriteLine("[LAST NO] ****** POS -> " + autoNumberPos);
+                    Console.WriteLine("[LAST NO] ****** LENGTH -> " + autoNumberLength);
+
+                    int lastIndex = 1;
+                    if (lastNo.Length > 0)
+                    {
+                        int number;
+                        
+                        if(int.TryParse(lastNo.Substring(autoNumberPos, autoNumberLength), out number))
+                        {
+                            lastIndex = number;
+                            lastIndex++;
+                        }                        
+                    }
+                    //CREATE NEW NUMBER
+                    uniqueNo.Clear();
+                    foreach (DataRow rowFormat in formatDetails.Rows)
+                        {
+                            int segmentType = (int)rowFormat["segment_type"];
+                            if (segmentType.Equals(SEGMENT_TYPE_MONTH))
+                            {
+                                uniqueNo.Append(docDate.ToString(rowFormat["mask_format"].ToString()));
+                            }
+                            else if (segmentType.Equals(SEGMENT_TYPE_YEAR))
+                            {
+                                uniqueNo.Append(docDate.ToString(rowFormat["mask_format"].ToString().ToLower()));
+                            }
+                            else if (segmentType.Equals(SEGMENT_TYPE_NUMBER))
+                            {
+                                uniqueNo.Append("0".Repeat(autoNumberLength - lastIndex.ToString().Length));
+                                uniqueNo.Append(lastIndex.ToString());
+                            }
+                            else
+                            {
+                                uniqueNo.Append(rowFormat["mask_format"].ToString());
+                            }
+                        }
+                   
+                }
+                catch(Exception ex)
+                {
+                    Console.WriteLine("[UniqueDocumentNo] ****** Error " + ex.Message);
+                    Console.WriteLine("[UniqueDocumentNo] ****** Stack " + ex.StackTrace);
+                }                
+            }
+
+            return uniqueNo.ToString();
+        }
+
+        private DataTable GetDocumentFormat(int moduleId, string docNoSetup, string code, DbTransaction trans = null)
+        {
+            DataTable result = new DataTable();
+
+            if (!string.IsNullOrEmpty(docNoSetup))
+            {
+                string documentId = string.Empty;
+
+                string qry = string.Empty;
+                if (moduleId.Equals(TRX_MODULE.TRX_PAYABLE) || moduleId.Equals(TRX_MODULE.TRX_APPLY_PAYABLE))
+                {
+                    qry = string.Format("SELECT TOP 1 {0} FROM {1} ", docNoSetup, "payable_setup");
+                }
+                else if (moduleId.Equals(TRX_MODULE.TRX_RECEIVABLE) || moduleId.Equals(TRX_MODULE.TRX_APPLY_RECEIPT))
+                {
+                    qry = string.Format("SELECT TOP 1 {0} FROM {1} WHERE transaction_type = '{2}'", docNoSetup, "receivable_setup", code);
+                }
+                else if (moduleId.Equals(TRX_MODULE.TRX_CHECKBOOK) || moduleId.Equals(TRX_MODULE.TRX_BANK_RECONCILE))
+                {
+                    qry = string.Format("SELECT TOP 1 {0} FROM {1} WHERE checkbook_code = '{2}'", docNoSetup, "checkbook", code);
+                }
+                else if (moduleId.Equals(TRX_MODULE.TRX_GENERAL_JOURNAL))
+                {
+                    qry = string.Format("SELECT TOP 1 {0} FROM {1} ", docNoSetup, "financial_setup");
+                }
+                else if (moduleId.Equals(TRX_MODULE.TRX_PAYMENT))
+                {
+                    qry = string.Format("SELECT TOP 1 {0} FROM {1} WHERE checkbook_code = '{2}'", docNoSetup, "checkbook", code);
+                }
+                else if (moduleId.Equals(TRX_MODULE.TRX_RECEIPT))
+                {
+                    qry = string.Format("SELECT TOP 1 {0} FROM {1} WHERE checkbook_code = '{2}'", docNoSetup, "checkbook", code);
+<<<<<<< HEAD
+                } 
+                else if (moduleId.Equals(TRX_MODULE.SALES_ORDER)){
+                    qry = string.Format("SELECT TOP 1 {0} FROM {1}" , docNoSetup, "setup_sales");
+                } 
+                else if (moduleId.Equals(TRX_MODULE.SALES_QUOTATION)){
+                    qry = string.Format("SELECT TOP 1 {0} FROM {1}" , docNoSetup, "setup_sales");
+                } 
+=======
+                }
+                else if (moduleId.Equals(TRX_MODULE.TRX_CONTAINER_RENTAL_REQUEST))
+                {
+                    qry = string.Format("SELECT TOP 1 {0} FROM {1} WHERE transaction_type = '{2}'", docNoSetup, "setup_container_rental", code);
+                }
+>>>>>>> develop
+
+                if (!string.IsNullOrEmpty(qry))
+                {
+                    var queries = RawQuery.SelectRawSql(_context.Database, qry, trans);
+
+                    if (queries.Rows.Count > 0)
+                        documentId = queries.Rows[0][docNoSetup].ToString();
+                        if (!string.IsNullOrEmpty(documentId))
+                        {
+                            qry = string.Format("SELECT d.segment_no, d.segment_type, d.segment_length, d.mask_format, h.is_monthly_reset,h.is_yearly_reset, h.number_format " +
+                                "FROM number_format_detail d " +
+                                "JOIN number_format_header h ON h.format_header_id = d.format_header_id " +
+                                "WHERE h.document_id = '{0}' AND h.inactive = 0 ORDER BY segment_no ASC", documentId);
+
+                            result = RawQuery.SelectRawSql(_context.Database, qry, trans);
+                        }
+                }                
+            }
+
+            return result;
+        }
+    }
+
+    public static class StringExtensions
+    {
+        public static string Repeat(this string s, int n)
+        {
+            return new StringBuilder(s.Length * n)
+                            .AppendJoin(s, new string[n + 1])
+                            .ToString();
+        }
+    }
+}
